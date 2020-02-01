@@ -1,0 +1,62 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 0c835fa14883f997c0f1c932647654b406d055a3be8b9eea0394dd3c5756e1af
+
+name:           success-failure-haskell
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/l7r7/success-failure-haskell#readme>
+homepage:       https://github.com/l7r7/success-failure-haskell#readme
+bug-reports:    https://github.com/l7r7/success-failure-haskell/issues
+author:         Leonhard Riedisser
+maintainer:     leo008180@googlemail.com
+copyright:      2020 Leonhard Riedisser
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/l7r7/success-failure-haskell
+
+library
+  exposed-modules:
+      Chapter01
+  other-modules:
+      Paths_success_failure_haskell
+  hs-source-dirs:
+      src
+  build-depends:
+      base >=4.7 && <5
+  default-language: Haskell2010
+
+executable success-failure-haskell-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_success_failure_haskell
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , success-failure-haskell
+  default-language: Haskell2010
+
+test-suite success-failure-haskell-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_success_failure_haskell
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , success-failure-haskell
+  default-language: Haskell2010
