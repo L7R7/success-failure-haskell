@@ -6,17 +6,20 @@ import           Data.Either
 main :: IO ()
 main = do
   putStrLn "Please enter a password"
-  password <- getLine
+  password <- Password <$> getLine
   print (validatePassword password)
 
-validatePassword :: String -> Either String String
-validatePassword password = cleanWhitespace password >>= requireAlphaNum >>= checkPasswordLength
+validatePassword :: Password -> Either Error Password
+validatePassword (Password password) = Password <$> (cleanWhitespace password >>= requireAlphaNum >>= checkLength 20)
 
-checkPasswordLength :: String -> Either String String
+validateUsername :: Username -> Either Error Username
+validateUsername (Username username) = Username <$> (cleanWhitespace username >>= requireAlphaNum >>= checkLength 15)
+
+checkPasswordLength :: String -> Either Error Password
 checkPasswordLength password =
   if length password > 20 || length password < 10
-    then Left "Your password must be at least 10 characters long and may not be longer than 20 characters long"
-    else Right password
+    then Left (Error "Your password must be at least 10 characters long and may not be longer than 20 characters long")
+    else Right (Password password)
 
 checkPasswordLength2 :: String -> Maybe String
 checkPasswordLength2 password =
@@ -24,14 +27,26 @@ checkPasswordLength2 password =
     then Just password
     else Nothing
 
-requireAlphaNum :: String -> Either String String
+checkUsernameLength :: String -> Either Error Username
+checkUsernameLength name =
+  if length name > 15
+    then Left (Error "Username cannot be longer than 15 characters.")
+    else Right (Username name)
+
+checkLength :: Int -> String -> Either Error String
+checkLength n s =
+  if length s > n
+    then Left (Error ("Input must not be longer than " ++ show n ++ " characters"))
+    else Right s
+
+requireAlphaNum :: String -> Either Error String
 requireAlphaNum xs =
   if all isAlphaNum xs
     then Right xs
-    else Left "Your password cannot contain special characters."
+    else Left (Error "Your password cannot contain special characters.")
 
-cleanWhitespace :: String -> Either String String
-cleanWhitespace "" = Left "Your password may not start with a whitespace character"
+cleanWhitespace :: String -> Either Error String
+cleanWhitespace "" = Left (Error "May not start with a whitespace character")
 cleanWhitespace str@(x:xs) =
   if isSpace x
     then cleanWhitespace xs
@@ -65,17 +80,30 @@ eq n actual expected =
 test :: IO ()
 test =
   printTestResult $ do
-    eq 0 (checkPasswordLength "") (Left "Your password must be at least 10 characters long and may not be longer than 20 characters long")
+    eq 0 (checkPasswordLength "") (Left (Error "Your password must be at least 10 characters long and may not be longer than 20 characters long"))
     eq
       1
       (checkPasswordLength "123456789012345678901")
-      (Left "Your password must be at least 10 characters long and may not be longer than 20 characters long")
-    eq 2 (checkPasswordLength "julielovesbooks") (Right "julielovesbooks")
-    eq 3 (cleanWhitespace "") (Left "Your password may not start with a whitespace character")
+      (Left (Error "Your password must be at least 10 characters long and may not be longer than 20 characters long"))
+    eq 2 (checkPasswordLength "julielovesbooks") (Right (Password "julielovesbooks"))
+    eq 3 (cleanWhitespace "") (Left (Error "Your password may not start with a whitespace character"))
     eq 4 (cleanWhitespace " foo") (Right "foo")
     eq 5 (cleanWhitespace "foo") (Right "foo")
     eq 6 (cleanWhitespace "     foo") (Right "foo")
     eq 7 (cleanWhitespace "     f o o") (Right "f o o")
     eq 8 (requireAlphaNum "abcd") (Right "abcd")
-    eq 9 (requireAlphaNum "abcd;") (Left "Your password cannot contain special characters.")
-    eq 10 (requireAlphaNum ";") (Left "Your password cannot contain special characters.")
+    eq 9 (requireAlphaNum "abcd;") (Left (Error "Your password cannot contain special characters."))
+    eq 10 (requireAlphaNum ";") (Left (Error "Your password cannot contain special characters."))
+
+newtype Password =
+  Password String
+  deriving (Eq, Show)
+
+newtype Username =
+  Username String
+  deriving (Eq, Show)
+
+newtype Error =
+  Error String
+  deriving (Eq, Show)
+-- 6.4: the Eq deriving is missing for the newtypes. Otherwise, the tests won't typecheck
