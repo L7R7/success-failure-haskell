@@ -35,3 +35,16 @@ cleanWhitespace str@(x:xs) =
   if isSpace x
     then cleanWhitespace xs
     else Just str
+
+bindMaybe :: Maybe a -> (a -> Maybe b) -> Maybe b
+bindMaybe Nothing _  = Nothing
+bindMaybe (Just a) f = f a
+
+data StringOrValue a
+  = Str String
+  | Val a
+  deriving (Show)
+
+bindStringOrValue :: StringOrValue a -> (a -> StringOrValue b) -> StringOrValue b
+bindStringOrValue (Str s) _ = Str s
+bindStringOrValue (Val a) f = f a
