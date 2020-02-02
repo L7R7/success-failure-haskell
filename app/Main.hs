@@ -1,58 +1,72 @@
+{-# LANGUAGE ApplicativeDo              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+
 module Main where
 
 import           Data.Char
 import           Data.Either
+import qualified Data.Text       as T
+import qualified Data.Text.IO    as T
+import           Data.Validation
 
 main :: IO ()
 main = do
   putStr "Please enter a username.\n> "
-  username <- Username <$> getLine
+  username <- Username <$> T.getLine
   putStr "Please enter a password.\n> "
-  password <- Password <$> getLine
+  password <- Password <$> T.getLine
   print (makeUser username password)
 
-validatePassword :: Password -> Either Error Password
-validatePassword (Password password) = Password <$> (cleanWhitespace password >>= requireAlphaNum >>= checkLength 20)
+validatePassword :: Password -> Validation Error Password
+validatePassword (Password password) =
+  case cleanWhitespace password of
+    Failure err -> Failure err
+    Success password2 -> requireAlphaNum password2 *> checkPasswordLength password2
 
-validateUsername :: Username -> Either Error Username
-validateUsername (Username username) = Username <$> (cleanWhitespace username >>= requireAlphaNum >>= checkLength 15)
+validateUsername :: Username -> Validation Error Username
+validateUsername (Username username) =
+  case cleanWhitespace username of
+    Failure err -> Failure err
+    Success username2 -> requireAlphaNum username2 *> checkUsernameLength username2
 
-checkPasswordLength :: String -> Either Error Password
+checkPasswordLength :: T.Text -> Validation Error Password
 checkPasswordLength password =
-  if length password > 20 || length password < 10
-    then Left (Error "Your password must be at least 10 characters long and may not be longer than 20 characters long")
-    else Right (Password password)
+  if T.length password > 20 || T.length password < 10
+    then Failure (Error ["Your password must be at least 10 characters long and may not be longer than 20 characters long"])
+    else Success (Password password)
 
-checkPasswordLength2 :: String -> Maybe String
+checkPasswordLength2 :: T.Text -> Maybe T.Text
 checkPasswordLength2 password =
-  if length password `elem` [10 .. 20]
+  if T.length password `elem` [10 .. 20]
     then Just password
     else Nothing
 
-checkUsernameLength :: String -> Either Error Username
+checkUsernameLength :: T.Text -> Validation Error Username
 checkUsernameLength name =
-  if length name > 15
-    then Left (Error "Username cannot be longer than 15 characters.")
-    else Right (Username name)
+  if T.length name > 15
+    then Failure (Error ["Username cannot be longer than 15 characters."])
+    else Success (Username name)
 
-checkLength :: Int -> String -> Either Error String
+checkLength :: Int -> T.Text -> Validation Error T.Text
 checkLength n s =
-  if length s > n
-    then Left (Error ("Input must not be longer than " ++ show n ++ " characters"))
-    else Right s
+  if T.length s > n
+    then Failure (Error [T.pack ("Input must not be longer than " ++ show n ++ " characters")])
+    else Success s
 
-requireAlphaNum :: String -> Either Error String
+requireAlphaNum :: T.Text -> Validation Error T.Text
 requireAlphaNum xs =
-  if all isAlphaNum xs
-    then Right xs
-    else Left (Error "Your password cannot contain special characters.")
+  if T.all isAlphaNum xs
+    then Success xs
+    else Failure (Error ["Your password cannot contain special characters."])
 
-cleanWhitespace :: String -> Either Error String
-cleanWhitespace "" = Left (Error "May not start with a whitespace character")
-cleanWhitespace str@(x:xs) =
-  if isSpace x
-    then cleanWhitespace xs
-    else Right str
+cleanWhitespace :: T.Text -> Validation Error T.Text
+cleanWhitespace input =
+  if T.null stripped
+    then Failure (Error ["Cannot be empty."])
+    else Success stripped
+  where
+    stripped = T.strip input
 
 bindMaybe :: Maybe a -> (a -> Maybe b) -> Maybe b
 bindMaybe Nothing _  = Nothing
@@ -67,55 +81,61 @@ bindStringOrValue :: StringOrValue a -> (a -> StringOrValue b) -> StringOrValue 
 bindStringOrValue (Str s) _ = Str s
 bindStringOrValue (Val a) f = f a
 
-printTestResult :: Either String () -> IO ()
+printTestResult :: Either T.Text () -> IO ()
 printTestResult r =
   case r of
-    Left err -> putStrLn err
+    Left err -> T.putStrLn err
     Right () -> putStrLn "All tests passed."
 
-eq :: (Eq a, Show a) => Int -> a -> a -> Either String ()
+eq :: (Eq a, Show a) => Int -> a -> a -> Either T.Text ()
 eq n actual expected =
   if actual == expected
     then Right ()
-    else Left (unlines ["Test " ++ show n, " Expected: " ++ show expected, " But got: " ++ show actual])
+    else Left (T.unlines (map T.pack ["Test " ++ show n, " Expected: " ++ show expected, " But got: " ++ show actual]))
 
 test :: IO ()
 test =
   printTestResult $ do
-    eq 0 (checkPasswordLength "") (Left (Error "Your password must be at least 10 characters long and may not be longer than 20 characters long"))
+    eq
+      0
+      (checkPasswordLength "")
+      (Failure (Error ["Your password must be at least 10 characters long and may not be longer than 20 characters long"]))
     eq
       1
       (checkPasswordLength "123456789012345678901")
-      (Left (Error "Your password must be at least 10 characters long and may not be longer than 20 characters long"))
-    eq 2 (checkPasswordLength "julielovesbooks") (Right (Password "julielovesbooks"))
-    eq 3 (cleanWhitespace "") (Left (Error "Your password may not start with a whitespace character"))
-    eq 4 (cleanWhitespace " foo") (Right "foo")
-    eq 5 (cleanWhitespace "foo") (Right "foo")
-    eq 6 (cleanWhitespace "     foo") (Right "foo")
-    eq 7 (cleanWhitespace "     f o o") (Right "f o o")
-    eq 8 (requireAlphaNum "abcd") (Right "abcd")
-    eq 9 (requireAlphaNum "abcd;") (Left (Error "Your password cannot contain special characters."))
-    eq 10 (requireAlphaNum ";") (Left (Error "Your password cannot contain special characters."))
+      (Failure (Error ["Your password must be at least 10 characters long and may not be longer than 20 characters long"]))
+    eq 2 (checkPasswordLength "julielovesbooks") (Success (Password "julielovesbooks"))
+    eq 3 (cleanWhitespace "") (Failure (Error ["Cannot be empty."]))
+    eq 4 (cleanWhitespace " foo") (Success "foo")
+    eq 5 (cleanWhitespace "foo") (Success "foo")
+    eq 6 (cleanWhitespace "     foo") (Success "foo")
+    eq 7 (cleanWhitespace "     f o o") (Success "f o o")
+    eq 8 (requireAlphaNum "abcd") (Success "abcd")
+    eq 9 (requireAlphaNum "abcd;") (Failure (Error ["Your password cannot contain special characters."]))
+    eq 10 (requireAlphaNum ";") (Failure (Error ["Your password cannot contain special characters."]))
 
 newtype Password =
-  Password String
+  Password T.Text
   deriving (Eq, Show)
 
 newtype Username =
-  Username String
+  Username T.Text
   deriving (Eq, Show)
 
 newtype Error =
-  Error String
-  deriving (Eq, Show)
+  Error [T.Text]
+  deriving (Eq, Semigroup, Show)
 
 data User =
   User Username Password
   deriving (Show)
 
-makeUser :: Username -> Password -> Either Error User
-makeUser name password = User <$> validateUsername name <*> validatePassword password
+makeUser :: Username -> Password -> Validation Error User
+makeUser name password = do
+  user <- validateUsername name
+  pass <- validatePassword password
+  pure $ User user pass
 
-makeUserTmpPassword :: Username -> Either Error User
+makeUserTmpPassword :: Username -> Validation Error User
 makeUserTmpPassword name = User <$> validateUsername name <*> pure (Password "temporaryPassword")
 -- 6.4: the Eq deriving is missing for the newtypes. Otherwise, the tests won't typecheck

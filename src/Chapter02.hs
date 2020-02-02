@@ -74,16 +74,10 @@ translateWord :: String -> String
 translateWord = map substituteChar
 
 promptWord1 :: IO String
-promptWord1 = do
-  putStr "Please enter a word.\n> "
-  getLine
+promptWord1 = putStr "Please enter a word.\n> " *> getLine
 
 promptWord2 :: IO String
-promptWord2 = do
-  putStr "Please enter a second word.\n> "
-  getLine
+promptWord2 = putStr "Please enter a second word.\n> " *> getLine
 
 mainAnagram2 :: IO ()
-mainAnagram2 = do
-  result <- checkAnagram <$> promptWord1 <*> promptWord2
-  print result
+mainAnagram2 = checkAnagram <$> promptWord1 <*> promptWord2 >>= print
