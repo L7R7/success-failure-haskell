@@ -5,9 +5,11 @@ import           Data.Either
 
 main :: IO ()
 main = do
-  putStrLn "Please enter a password"
+  putStr "Please enter a username.\n> "
+  username <- Username <$> getLine
+  putStr "Please enter a password.\n> "
   password <- Password <$> getLine
-  print (validatePassword password)
+  print (makeUser username password)
 
 validatePassword :: Password -> Either Error Password
 validatePassword (Password password) = Password <$> (cleanWhitespace password >>= requireAlphaNum >>= checkLength 20)
@@ -106,4 +108,14 @@ newtype Username =
 newtype Error =
   Error String
   deriving (Eq, Show)
+
+data User =
+  User Username Password
+  deriving (Show)
+
+makeUser :: Username -> Password -> Either Error User
+makeUser name password = User <$> validateUsername name <*> validatePassword password
+
+makeUserTmpPassword :: Username -> Either Error User
+makeUserTmpPassword name = User <$> validateUsername name <*> pure (Password "temporaryPassword")
 -- 6.4: the Eq deriving is missing for the newtypes. Otherwise, the tests won't typecheck
