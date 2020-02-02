@@ -1,6 +1,5 @@
-{-# LANGUAGE ApplicativeDo              #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE ApplicativeDo     #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
@@ -16,7 +15,7 @@ main = do
   username <- Username <$> T.getLine
   putStr "Please enter a password.\n> "
   password <- Password <$> T.getLine
-  print (makeUser username password)
+  display username password
 
 validatePassword :: Password -> Validation Error Password
 validatePassword (Password password) =
@@ -33,7 +32,7 @@ validateUsername (Username username) =
 checkPasswordLength :: T.Text -> Validation Error Password
 checkPasswordLength password =
   if T.length password > 20 || T.length password < 10
-    then Failure (Error ["Your password must be at least 10 characters long and may not be longer than 20 characters long"])
+    then Failure (toError "Your password must be at least 10 characters long and may not be longer than 20 characters long")
     else Success (Password password)
 
 checkPasswordLength2 :: T.Text -> Maybe T.Text
@@ -45,25 +44,25 @@ checkPasswordLength2 password =
 checkUsernameLength :: T.Text -> Validation Error Username
 checkUsernameLength name =
   if T.length name > 15
-    then Failure (Error ["Username cannot be longer than 15 characters."])
+    then Failure (toError "Username cannot be longer than 15 characters.")
     else Success (Username name)
 
 checkLength :: Int -> T.Text -> Validation Error T.Text
 checkLength n s =
   if T.length s > n
-    then Failure (Error [T.pack ("Input must not be longer than " ++ show n ++ " characters")])
+    then Failure (toError (T.pack ("Input must not be longer than " ++ show n ++ " characters")))
     else Success s
 
 requireAlphaNum :: T.Text -> Validation Error T.Text
 requireAlphaNum xs =
   if T.all isAlphaNum xs
     then Success xs
-    else Failure (Error ["Your password cannot contain special characters."])
+    else Failure (toError "Your password cannot contain special characters.")
 
 cleanWhitespace :: T.Text -> Validation Error T.Text
 cleanWhitespace input =
   if T.null stripped
-    then Failure (Error ["Cannot be empty."])
+    then Failure (toError "Cannot be empty.")
     else Success stripped
   where
     stripped = T.strip input
@@ -99,20 +98,20 @@ test =
     eq
       0
       (checkPasswordLength "")
-      (Failure (Error ["Your password must be at least 10 characters long and may not be longer than 20 characters long"]))
+      (Failure (toError "Your password must be at least 10 characters long and may not be longer than 20 characters long"))
     eq
       1
       (checkPasswordLength "123456789012345678901")
-      (Failure (Error ["Your password must be at least 10 characters long and may not be longer than 20 characters long"]))
+      (Failure (toError "Your password must be at least 10 characters long and may not be longer than 20 characters long"))
     eq 2 (checkPasswordLength "julielovesbooks") (Success (Password "julielovesbooks"))
-    eq 3 (cleanWhitespace "") (Failure (Error ["Cannot be empty."]))
+    eq 3 (cleanWhitespace "") (Failure (toError "Cannot be empty."))
     eq 4 (cleanWhitespace " foo") (Success "foo")
     eq 5 (cleanWhitespace "foo") (Success "foo")
     eq 6 (cleanWhitespace "     foo") (Success "foo")
     eq 7 (cleanWhitespace "     f o o") (Success "f o o")
     eq 8 (requireAlphaNum "abcd") (Success "abcd")
-    eq 9 (requireAlphaNum "abcd;") (Failure (Error ["Your password cannot contain special characters."]))
-    eq 10 (requireAlphaNum ";") (Failure (Error ["Your password cannot contain special characters."]))
+    eq 9 (requireAlphaNum "abcd;") (Failure (toError "Your password cannot contain special characters."))
+    eq 10 (requireAlphaNum ";") (Failure (toError "Your password cannot contain special characters."))
 
 newtype Password =
   Password T.Text
@@ -123,8 +122,11 @@ newtype Username =
   deriving (Eq, Show)
 
 newtype Error =
-  Error [T.Text]
-  deriving (Eq, Semigroup, Show)
+  Error T.Text
+  deriving (Eq, Show)
+
+instance Semigroup Error where
+  (Error err1) <> (Error err2) = toError (T.intercalate "\n" [err1, err2])
 
 data User =
   User Username Password
@@ -132,10 +134,35 @@ data User =
 
 makeUser :: Username -> Password -> Validation Error User
 makeUser name password = do
-  user <- validateUsername name
-  pass <- validatePassword password
+  user <- usernameErrors name
+  pass <- passwordErrors password
   pure $ User user pass
 
 makeUserTmpPassword :: Username -> Validation Error User
 makeUserTmpPassword name = User <$> validateUsername name <*> pure (Password "temporaryPassword")
+
+passwordErrors :: Password -> Validation Error Password
+passwordErrors password =
+  case validatePassword password of
+    Failure err       -> Failure (toError "Invalid password:" <> err)
+    Success password2 -> Success password2
+
+usernameErrors :: Username -> Validation Error Username
+usernameErrors username =
+  case validateUsername username of
+    Failure err       -> Failure (toError "Invalid username:" <> err)
+    Success username2 -> Success username2
+
+display :: Username -> Password -> IO ()
+display name password =
+  case makeUser name password of
+    Failure err -> T.putStr (errorCoerce err)
+    Success (User (Username name) password) -> T.putStrLn ("Welcome, " <> name)
+
+errorCoerce :: Error -> T.Text
+errorCoerce (Error err) = err
+
+toError :: T.Text -> Error
+toError = Error
 -- 6.4: the Eq deriving is missing for the newtypes. Otherwise, the tests won't typecheck
+-- 9.5 it's T.Text instead of String
