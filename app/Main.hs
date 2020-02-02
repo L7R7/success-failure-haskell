@@ -1,9 +1,11 @@
 {-# LANGUAGE ApplicativeDo     #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module Main where
 
 import           Data.Char
+import           Data.Coerce
 import           Data.Either
 import qualified Data.Text       as T
 import qualified Data.Text.IO    as T
@@ -17,13 +19,13 @@ main = do
   password <- Password <$> T.getLine
   display username password
 
-validatePassword :: Password -> Validation Error Password
-validatePassword (Password password) =
-  case cleanWhitespace password of
+validatePassword :: Rule Password
+validatePassword password =
+  case (coerce cleanWhitespace :: Rule Password) password of
     Failure err -> Failure err
-    Success password2 -> requireAlphaNum password2 *> checkPasswordLength password2
+    Success password2 -> (coerce requireAlphaNum :: Rule Password) password2 *> checkPasswordLength password2
 
-validateUsername :: Username -> Validation Error Username
+validateUsername :: Rule Username
 validateUsername (Username username) =
   case cleanWhitespace username of
     Failure err -> Failure err
@@ -47,19 +49,19 @@ checkUsernameLength name =
     then Failure (toError "Username cannot be longer than 15 characters.")
     else Success (Username name)
 
-checkLength :: Int -> T.Text -> Validation Error T.Text
+checkLength :: Int -> Rule T.Text
 checkLength n s =
   if T.length s > n
     then Failure (toError (T.pack ("Input must not be longer than " ++ show n ++ " characters")))
     else Success s
 
-requireAlphaNum :: T.Text -> Validation Error T.Text
+requireAlphaNum :: Rule T.Text
 requireAlphaNum xs =
   if T.all isAlphaNum xs
     then Success xs
     else Failure (toError "Your password cannot contain special characters.")
 
-cleanWhitespace :: T.Text -> Validation Error T.Text
+cleanWhitespace :: Rule T.Text
 cleanWhitespace input =
   if T.null stripped
     then Failure (toError "Cannot be empty.")
@@ -156,13 +158,12 @@ usernameErrors username =
 display :: Username -> Password -> IO ()
 display name password =
   case makeUser name password of
-    Failure err -> T.putStr (errorCoerce err)
-    Success (User (Username name) password) -> T.putStrLn ("Welcome, " <> name)
-
-errorCoerce :: Error -> T.Text
-errorCoerce (Error err) = err
+    Failure err -> T.putStr (coerce err)
+    Success (User user password) -> T.putStrLn ("Welcome, " <> coerce @Username @T.Text name)
 
 toError :: T.Text -> Error
 toError = Error
+
+type Rule a = (a -> Validation Error a)
 -- 6.4: the Eq deriving is missing for the newtypes. Otherwise, the tests won't typecheck
 -- 9.5 it's T.Text instead of String
