@@ -4,6 +4,7 @@
 
 module Main where
 
+import           Control.Lens
 import           Data.Char
 import           Data.Coerce
 import           Data.Either
@@ -23,7 +24,7 @@ validatePassword :: Rule Password
 validatePassword password =
   case (coerce cleanWhitespace :: Rule Password) password of
     Failure err -> Failure err
-    Success password2 -> (coerce requireAlphaNum :: Rule Password) password2 *> checkPasswordLength password2
+    Success password2 -> (coerce requireAlphaNum :: Rule Password) password2 *> (coerce checkPasswordLength :: Rule Password) password2
 
 validateUsername :: Rule Username
 validateUsername (Username username) =
@@ -42,6 +43,15 @@ checkPasswordLength2 password =
   if T.length password `elem` [10 .. 20]
     then Just password
     else Nothing
+
+checkPasswordLength3 :: Password -> Maybe Password
+checkPasswordLength3 password =
+  if T.length (coerce @Password @T.Text password) > 20
+    then Nothing
+    else Just password
+
+validatePasswordLength :: Validate v => Password -> v Error Password
+validatePasswordLength = validate (toError "Password may not be longer than 20 characters") checkPasswordLength3
 
 checkUsernameLength :: T.Text -> Validation Error Username
 checkUsernameLength name =
@@ -140,14 +150,14 @@ makeUser name password = do
   pass <- passwordErrors password
   pure $ User user pass
 
+makeUser2 :: Validate v => Username -> Password -> v Error User
+makeUser2 name password = review _Validation (makeUser name password)
+
 makeUserTmpPassword :: Username -> Validation Error User
 makeUserTmpPassword name = User <$> validateUsername name <*> pure (Password "temporaryPassword")
 
 passwordErrors :: Password -> Validation Error Password
-passwordErrors password =
-  case validatePassword password of
-    Failure err       -> Failure (toError "Invalid password:" <> err)
-    Success password2 -> Success password2
+passwordErrors password = over _Failure (\err -> toError "Invalid password:" <> err) (validatePassword password)
 
 usernameErrors :: Username -> Validation Error Username
 usernameErrors username =
@@ -157,13 +167,63 @@ usernameErrors username =
 
 display :: Username -> Password -> IO ()
 display name password =
-  case makeUser name password of
-    Failure err -> T.putStr (coerce err)
-    Success (User user password) -> T.putStrLn ("Welcome, " <> coerce @Username @T.Text name)
+  foldAB (T.putStr . coerce) (\(User user password) -> T.putStrLn ("Welcome, " <> coerce @Username @T.Text name)) (makeUser name password)
 
 toError :: T.Text -> Error
 toError = Error
 
 type Rule a = (a -> Validation Error a)
--- 6.4: the Eq deriving is missing for the newtypes. Otherwise, the tests won't typecheck
--- 9.5 it's T.Text instead of String
+
+class LiftAB f where
+  liftA :: a -> f a b
+  liftB :: b -> f a b
+
+instance LiftAB Validation where
+  liftA = Failure
+  liftB = Success
+
+instance LiftAB Either where
+  liftA = Left
+  liftB = Right
+
+class MaybeAB f where
+  maybeA :: f a b -> Maybe a
+  maybeB :: f a b -> Maybe b
+
+instance MaybeAB Validation where
+  maybeA (Failure a) = Just a
+  maybeA _           = Nothing
+  maybeB (Success b) = Just b
+  maybeB _           = Nothing
+
+instance MaybeAB Either where
+  maybeA (Left a) = Just a
+  maybeA _        = Nothing
+  maybeB (Right b) = Just b
+  maybeB _         = Nothing
+
+class FoldAB f where
+  foldAB :: (a -> c) -> (b -> c) -> f a b -> c
+
+instance FoldAB Either where
+  foldAB = either
+
+instance FoldAB Validation where
+  foldAB = validation
+
+data These a b
+  = This a
+  | That b
+  | These a b
+
+instance LiftAB These where
+  liftA = This
+  liftB = That
+
+instance MaybeAB These where
+  maybeA (This a)    = Just a
+  maybeA (That _)    = Nothing
+  maybeA (These a _) = Just a
+  maybeB (This _)    = Nothing
+  maybeB (That b)    = Just b
+  maybeB (These _ b) = Just b

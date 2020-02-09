@@ -48,6 +48,7 @@ executable success-failure-haskell-exe
     , success-failure-haskell
     , text
     , validation
+    , lens
   default-language: Haskell2010
 
 test-suite success-failure-haskell-test
